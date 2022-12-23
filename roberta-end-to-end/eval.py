@@ -8,6 +8,7 @@ from torch.optim import AdamW
 from dataloader import DialogLoader
 from model import DialogBertTransformer, MaskedNLLLoss
 from sklearn.metrics import f1_score, confusion_matrix, accuracy_score, classification_report
+import pprint
 
 def configure_optimizers(model, weight_decay, learning_rate, adam_epsilon):
     "Prepare optimizer"
@@ -71,16 +72,24 @@ def configure_dataloaders(dataset, classify, batch_size):
 def train_or_eval_model(model, loss_function, dataloader, epoch, optimizer=None, train=False):
     losses, preds, labels, masks = [], [], [], []
     assert not train or optimizer!=None
-    
+
     if train:
         model.train()
+        torch.save(model.state_dict(),'/tmp/model/output-model.dict')
     else:
+        model.load_state_dict(torch.load('/home/andrewdo/output-model.dict'),strict=False)
         model.eval()
 
+    all_conversations = []
+    all_preds = []
+
     for conversations, label, loss_mask, speaker_mask in tqdm(dataloader, leave=False):
+
+        all_conversations.append(conversations)
+
         if train:
             optimizer.zero_grad()
-            
+
         # create umask and qmask 
         lengths = [len(item) for item in conversations]
         umask = torch.zeros(len(lengths), max(lengths)).long().cuda()
@@ -98,10 +107,10 @@ def train_or_eval_model(model, loss_function, dataloader, epoch, optimizer=None,
         loss_mask = torch.nn.utils.rnn.pad_sequence([torch.tensor(item) for item in loss_mask], 
                                                     batch_first=True).long().cuda()
         
-        
         # obtain log probabilities
         log_prob = model(conversations, lengths, umask, qmask)
         
+
         # compute loss and metrics
         lp_ = log_prob.transpose(0, 1).contiguous().view(-1, log_prob.size()[2])
         labels_ = label.view(-1) 
@@ -123,6 +132,10 @@ def train_or_eval_model(model, loss_function, dataloader, epoch, optimizer=None,
         masks  = np.concatenate(masks)
     else:
         return float('nan'), float('nan'), float('nan'), [], [], []
+
+    pp = pprint.PrettyPrinter(indent=4)
+    # pp.pprint(list(all_conversations))
+    pp.pprint(list(preds))
 
     avg_loss = round(np.sum(losses)/np.sum(masks), 4)
     avg_accuracy = round(accuracy_score(labels, preds, sample_weight=masks)*100, 2)
@@ -153,9 +166,6 @@ def train_or_eval_model(model, loss_function, dataloader, epoch, optimizer=None,
             avg_fscore3 = round(f1_score(labels, preds, sample_weight=masks, average='macro')*100, 2)
             fscores = [avg_fscore1, avg_fscore2, avg_fscore3]
     
-    if train:
-        torch.save(model.state_dict(),'/tmp/model/output-model.dict')
-
     return avg_loss, avg_accuracy, fscores, labels, preds, masks 
 
 if __name__ == '__main__':
@@ -248,8 +258,8 @@ if __name__ == '__main__':
 
     for e in range(n_epochs):
         start_time = time.time()
-        train_loss, train_acc, train_fscore, _, _, _ = train_or_eval_model(model, loss_function,
-                                                                           train_loader, e, optimizer, True)
+        # train_loss, train_acc, train_fscore, _, _, _ = train_or_eval_model(model, loss_function,
+        #                                                                    train_loader, e, optimizer, True)
         
         valid_loss, valid_acc, valid_fscore, _, _, _ = train_or_eval_model(model, loss_function, 
                                                                            valid_loader, e)
@@ -265,9 +275,9 @@ if __name__ == '__main__':
             best_loss, best_label, best_pred, best_mask =\
                     valid_loss, test_label, test_pred, test_mask
         
-        x = 'Epoch {} train_loss {} train_acc {} train_fscore {} valid_loss {} valid_acc {} valid_fscore {} test_loss {} test_acc {} test_fscore {} time {}'.\
-                format(e+1, train_loss, train_acc, train_fscore, valid_loss, valid_acc, valid_fscore,\
-                        test_loss, test_acc, test_fscore, round(time.time()-start_time, 2))
+        x = 'Epoch {} valid_loss {} valid_acc {} valid_fscore {} test_loss {} test_acc {} test_fscore {} time {}'.\
+                format(e+1, valid_loss, valid_acc, valid_fscore, test_loss, test_acc, test_fscore, round(time.time()-start_time, 2))
+
         print (x)
         lf.write(x + '\n')
         

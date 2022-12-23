@@ -74,7 +74,9 @@ def train_or_eval_model(model, loss_function, dataloader, epoch, optimizer=None,
     
     if train:
         model.train()
+        torch.save(model.state_dict(),'/tmp/model/output-model.dict')
     else:
+        model.load_state_dict(torch.load('/home/andrewdo/output-model.dict'),strict=False)
         model.eval()
 
     for conversations, label, loss_mask, speaker_mask in tqdm(dataloader, leave=False):
@@ -153,9 +155,6 @@ def train_or_eval_model(model, loss_function, dataloader, epoch, optimizer=None,
             avg_fscore3 = round(f1_score(labels, preds, sample_weight=masks, average='macro')*100, 2)
             fscores = [avg_fscore1, avg_fscore2, avg_fscore3]
     
-    if train:
-        torch.save(model.state_dict(),'/tmp/model/output-model.dict')
-
     return avg_loss, avg_accuracy, fscores, labels, preds, masks 
 
 if __name__ == '__main__':
@@ -248,8 +247,8 @@ if __name__ == '__main__':
 
     for e in range(n_epochs):
         start_time = time.time()
-        train_loss, train_acc, train_fscore, _, _, _ = train_or_eval_model(model, loss_function,
-                                                                           train_loader, e, optimizer, True)
+        # train_loss, train_acc, train_fscore, _, _, _ = train_or_eval_model(model, loss_function,
+        #                                                                    train_loader, e, optimizer, True)
         
         valid_loss, valid_acc, valid_fscore, _, _, _ = train_or_eval_model(model, loss_function, 
                                                                            valid_loader, e)
@@ -265,9 +264,9 @@ if __name__ == '__main__':
             best_loss, best_label, best_pred, best_mask =\
                     valid_loss, test_label, test_pred, test_mask
         
-        x = 'Epoch {} train_loss {} train_acc {} train_fscore {} valid_loss {} valid_acc {} valid_fscore {} test_loss {} test_acc {} test_fscore {} time {}'.\
-                format(e+1, train_loss, train_acc, train_fscore, valid_loss, valid_acc, valid_fscore,\
-                        test_loss, test_acc, test_fscore, round(time.time()-start_time, 2))
+        x = 'Epoch {} valid_loss {} valid_acc {} valid_fscore {} test_loss {} test_acc {} test_fscore {} time {}'.\
+                format(e+1, valid_loss, valid_acc, valid_fscore, test_loss, test_acc, test_fscore, round(time.time()-start_time, 2))
+
         print (x)
         lf.write(x + '\n')
         
